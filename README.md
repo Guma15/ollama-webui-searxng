@@ -50,7 +50,7 @@ docker run -d --name ollama-stack -p 11434:11434 -p 8080:8080 -p 8081:8081 -v ol
 
 ---
 
-## Pull Ollama models (Option A)
+## Pull Ollama models
 
 After the container is running, pull models from the host:
 
