@@ -1,0 +1,9 @@
+# searxng-settings.yml
+server:
+  port: 8081
+  bind_address: 0.0.0.0
+
+ui:
+  theme: simple
+  # example: increase results per page
+  results_on_new_tab: false
