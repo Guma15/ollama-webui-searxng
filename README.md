@@ -1,142 +1,186 @@
-# Ollama + Open WebUI + SearXNG (single container)
+# Ollama + Open WebUI + SearXNG Local Stack (Docker Compose)
 
-One Docker container running **Ollama**, **Open WebUI**, and **SearXNG** via Supervisor.
+Self-hosted AI chat interface with local LLM inference (Ollama), UI (Open WebUI), persistent storage (Redis + Postgres), and private web search/RAG via SearXNG — all via Docker Compose.
 
-**Prerequisites:** Docker installed and running.
+**Features**
+- GPU acceleration for Ollama (NVIDIA CUDA)
+- Web search integration in Open WebUI via SearXNG (JSON format enabled)
+- Persistent data for models, chats, users via Redis + PostgreSQL
+- Easy to start/stop/update with `docker compose`
+
+**Prerequisites**
+- Docker & Docker Compose installed
+- (Recommended) NVIDIA GPU with drivers installed
+- For WSL2 users: NVIDIA drivers on Windows host + WSL2 GPU support
 
 ---
 
 ## Setup
 
-From the project directory:
+Clone or download this repository, then from the project directory:
 
 ```bash
-docker build -t ollama-openwebui-searxng .
+docker compose pull
 ```
-
----
 
 ## Run
 
+Start all services in the background:
+
 ```bash
-docker run -d --name ollama-stack -p 11434:11434 -p 8080:8080 -p 8081:8081 ollama-openwebui-searxng
+docker compose up -d
 ```
 
-### Optional .env setup:
-
-Create `.env` from the template:
+View logs:
 
 ```bash
-cp .env.template .env
-```
-
-Then run with it:
-
-```bash
-docker run -d --name ollama-stack -p 11434:11434 -p 8080:8080 -p 8081:8081 --env-file .env ollama-openwebui-searxng
-```
-
-To keep Ollama models across container restarts, add a volume:
-
-```bash
-docker run -d --name ollama-stack -p 11434:11434 -p 8080:8080 -p 8081:8081 -v ollama-models:/root/.ollama --env-file .env ollama-openwebui-searxng
-```
-
-To keep Open WebUI user accounts, chats, and settings across container recreation, add a volume:
-
-```bash
-docker run -d --name ollama-stack -p 11434:11434 -p 8080:8080 -p 8081:8081 -v ollama-models:/root/.ollama -v openwebui-data:/data/openwebui --env-file .env ollama-openwebui-searxng
+docker compose logs -f
+# Or for a specific service:
+docker compose logs -f open-webui
 ```
 
 ---
 
-## Pull Ollama models
+## Pull Ollama Models
 
-After the container is running, pull models from the host:
+After the stack is running, pull models into Ollama:
 
 ```bash
-docker exec -it ollama-stack ollama pull llama3.2
-docker exec -it ollama-stack ollama pull phi3
+docker exec -it ollama ollama pull qwen3.5:9b
+docker exec -it ollama ollama pull llama3.2
 ```
 
 List installed models:
 
 ```bash
-docker exec -it ollama-stack ollama list
+docker exec -it ollama ollama list
 ```
 
 ---
 
+
+## Enable GPU Acceleration for Ollama (NVIDIA CUDA)
+### On Linux Host (Ubuntu/Debian etc.)
+### Install NVIDIA Container Toolkit:
+```
+# Prerequisites
+sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
+
+# Add repo
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+&& curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+
+# Configure Docker
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+### Verify GPU access:
+```
+docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+```
+
 ## URLs
 
 | Service     | URL                    |
-|------------|------------------------|
-| Open WebUI | http://localhost:8080  |
-| SearXNG    | http://localhost:8081  |
-| Ollama API | http://localhost:11434 |
+|-------------|------------------------|
+| Open WebUI  | http://localhost:8080  |
+| SearXNG     | http://localhost:8081  |
+| Ollama API  | http://localhost:11434 |
 
 ---
 
-## Configure Open WebUI Web Search (SearXNG)
+## Services
 
-### Option A (recommended): configure at container creation time
-
-1. Copy `.env.template` to `.env` and set:
-   - `ENABLE_RAG_WEB_SEARCH=True`
-   - `RAG_WEB_SEARCH_ENGINE=searxng`
-   - `SEARXNG_QUERY_URL=http://127.0.0.1:8081/search?q=<query>&format=json`
-2. Start the container with `--env-file .env` (examples above).
-
-### Option B: configure via Admin UI
-
-1. Open Open WebUI at `http://localhost:8080` and sign in.
-2. Go to Admin Settings → Web Search.
-3. Select provider **SearXNG**.
-4. Set **SearXNG Query URL** to:
-
-`http://127.0.0.1:8081/search?q=<query>&format=json`
-
-Notes:
-- Use the literal placeholder `<query>` (Open WebUI replaces it).
-- This image enables SearXNG JSON output (required for the SearXNG provider).
+| Service     | Image                              | Purpose                        |
+|-------------|------------------------------------|--------------------------------|
+| `ollama`    | `ollama/ollama`                    | LLM inference (GPU-accelerated)|
+| `open-webui`| `ghcr.io/open-webui/open-webui`    | Chat UI                        |
+| `redis`     | `redis:7`                          | Session / caching              |
+| `postgres`  | `postgres:16`                      | Persistent chat & user storage |
+| `searxng`   | `searxng/searxng`                  | Private web search for RAG     |
 
 ---
 
-## Using Ollama from other projects
+## Web Search (SearXNG) Configuration
 
-The API is reachable on the host at **http://localhost:11434**. From another machine on your network use **http://\<host-ip\>:11434**.
+Web search is pre-configured via environment variables in `docker-compose.yml`:
+
+```
+ENABLE_RAG_WEB_SEARCH=true
+RAG_WEB_SEARCH_ENGINE=searxng
+SEARXNG_QUERY_URL=http://searxng:8081/search?q=<query>&format=json
+```
+
+No additional setup is required. To verify or adjust, go to **Admin Settings → Web Search** in Open WebUI.
+
+> **Note:** The `SEARXNG_QUERY_URL` uses the internal Docker service name `searxng`, not `localhost`. Do not change this to a host address.
+
+---
+
+## Persistent Data
+
+All data is stored under `./data/` in the project directory:
+
+| Path                   | Service    | Contents                     |
+|------------------------|------------|------------------------------|
+| `./data/ollama`        | Ollama     | Downloaded models            |
+| `./data/openwebui`     | Open WebUI | User data, settings          |
+| `./data/redis`         | Redis      | Session cache                |
+| `./data/postgres`      | Postgres   | Chats, users, accounts       |
+| `./searxng/settings.yml` | SearXNG  | Search engine configuration  |
+
+Data persists across container restarts and recreations.
+
+---
+
+## Using the Ollama API from Other Projects
+
+The Ollama API is exposed on the host at **http://localhost:11434**. From another machine on your network, use **http://\<host-ip\>:11434**.
 
 ```bash
 curl http://localhost:11434/api/tags
 curl http://localhost:11434/api/generate -d '{"model":"llama3.2","prompt":"Hi","stream":false}'
 ```
 
-Set your client’s base URL to `http://localhost:11434` (or the host IP when calling from elsewhere). No extra Docker config needed.
+---
+
+## Stop / Restart
+
+Stop all services (data is preserved):
+
+```bash
+docker compose down
+```
+
+Stop and remove all volumes (**deletes all data**):
+
+```bash
+docker compose down -v
+```
+
+Restart a single service:
+
+```bash
+docker compose restart open-webui
+```
+
+Update images and recreate containers:
+
+```bash
+docker compose pull
+docker compose up -d
+```
 
 ---
 
-## Stop / remove
-
-```bash
-docker stop ollama-stack
-docker rm ollama-stack
-```
-
-If you used the volume, models stay in the `ollama-models` volume. To remove it:
-
-```bash
-docker volume rm ollama-models
-```
-
-Open WebUI data lives in the `openwebui-data` volume. To remove it (deletes accounts/chats):
-
-```bash
-docker volume rm openwebui-data
-```
-
 ## Sources
-Ollama: https://ollama.com/
 
-Open WebUI: https://openwebui.com/
-
-SearXNG: https://docs.searxng.org/
+- Ollama: https://ollama.com/
+- Open WebUI: https://openwebui.com/
+- SearXNG: https://docs.searxng.org/

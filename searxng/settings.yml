@@ -1,9 +1,9 @@
-# searxng-settings.yml
+use_default_settings: true
 server:
-  port: 8081
-  bind_address: 0.0.0.0
-
-ui:
-  theme: simple
-  # example: increase results per page
-  results_on_new_tab: false
+  bind_address: "0.0.0.0"
+  secret_key: "${SEARXNG_SECRET_KEY}"  # Required in many setups; generate one e.g. openssl rand -hex 32
+  limiter: false  # Optional, but explicit
+search:
+  formats:
+    - html
+    - json

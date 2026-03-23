@@ -1,0 +1,96 @@
+services:
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_DEFAULT_MODEL=llama3
+      - OLLAMA_NUM_CTX=32768
+      - OLLAMA_GPU_LAYERS=999   # push all layers to GPU
+    volumes:
+      - ./data/ollama:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # Pulls the default model on first run (no-op if already downloaded).
+  ollama-init:
+    image: ollama/ollama
+    container_name: ollama-init
+    entrypoint: >
+      sh -c "
+        echo 'Waiting for Ollama to be ready...';
+        until curl -sf http://ollama:11434/api/tags > /dev/null; do sleep 2; done;
+        echo 'Pulling qwen3.5:9b...';
+        ollama pull qwen3.5:9b;
+        echo 'Model ready.'
+      "
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      - ollama
+    restart: "no"
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    ports:
+      - "8080:8080"
+    environment:
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://openwebui:openwebui@postgres:5432/openwebui
+      - ENABLE_RAG_WEB_SEARCH=true
+      - RAG_WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://searxng:8081/search?q=<query>&format=json
+    volumes:
+      - openwebui-data:/app/backend/data 
+    depends_on:
+      - ollama
+      - redis
+      - postgres
+      - searxng
+
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: openwebui
+      POSTGRES_PASSWORD: openwebui
+      POSTGRES_DB: openwebui
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng
+    container_name: searxng
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml
+    #  - ./data/searxng:/var/cache/searxng
+    environment:
+      - SEARXNG_SEARCH_FORMATS=html,json
+      - SEARXNG_SETTINGS_PATH=/etc/searxng/settings.yml
+      - BASE_URL=http://localhost:8081/
+
+volumes:
+  openwebui-data:
+  redis-data:
+  postgres-data:
