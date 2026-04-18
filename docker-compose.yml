@@ -3,6 +3,7 @@ services:
   ollama:
     image: ollama/ollama
     container_name: ollama
+    runtime: runc
     ports:
       - "11434:11434"
     environment:
@@ -24,6 +25,7 @@ services:
   ollama-init:
     image: ollama/ollama
     container_name: ollama-init
+    runtime: runc
     entrypoint: >
       sh -c "
         echo 'Waiting for Ollama to be ready...';
@@ -88,7 +90,7 @@ services:
     environment:
       - SEARXNG_SEARCH_FORMATS=html,json
       - SEARXNG_SETTINGS_PATH=/etc/searxng/settings.yml
-      - BASE_URL=http://localhost:8081/
+      - BASE_URL=http://searxng:8080/
 
 volumes:
   openwebui-data:
